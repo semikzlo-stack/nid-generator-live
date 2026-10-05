@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Media Post Generator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <img id="brandIcon" class="brand-icon" src="assets/logo_generator.svg" alt="NID">
+    <h1 data-i18n="appTitle">Social Media Post Generator</h1>
+  </div>
+  <div class="lang-switch">
+    <button class="lang-btn active" id="langEn" data-lang="en"><span class="lang-indicator" id="langIndicator"></span><span class="lang-btn-label">EN</span></button>
+    <button class="lang-btn" id="langPl" data-lang="pl"><span class="lang-btn-label">PL</span></button>
+  </div>
+</div>
+
+<!-- Motion system (nid-generator-gsap-motion-system.md) — fullscreen white
+     wipe between major wizard steps; parked off-screen below the viewport
+     until a step transition runs. -->
+<div id="wipeLayer" aria-hidden="true"></div>
+
+<div id="app">
+
+  <div id="stepPages">
+
+    <!-- Password gate (light client-side deterrent, not real security) —
+         NID_GENERATOR_COMBINED_CORRECTIONS.md Part VI: nine overlapping
+         circles fill in one at a time as the (invisible) real password
+         input is typed into; the whole row is that input's click target, so
+         it never needs a separate visible field, hint box, or Continue
+         button. Validates and advances automatically at the 9th character —
+         see submitGate() in script.js. -->
+    <div class="wizard-page gate-page" id="page-gate" data-step="gate">
+      <div class="picker-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+      <div class="gate-composition" id="gateComposition">
+        <div class="gate-header">
+          <div class="wizard-step-title" data-i18n="gateTitle">Enter the password to continue</div>
+        </div>
+        <div class="gate-circles-wrap">
+          <div class="gate-circles" id="gateCircles" aria-hidden="true"></div>
+          <input type="password" id="gateInput" class="gate-real-input" maxlength="9" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-aria="gatePlaceholder" aria-label="Password">
+        </div>
+      </div>
+      <div class="input-hint gate-error" id="gateHint"></div>
+    </div>
+
+    <!-- FORMAT · where are we publishing? (Step 1) — UI_SPEC.md §8, 1668×960
+         reference frame. Own floating logo (figma-chrome hides the shared
+         topbar's brand); heading centered, icon row absolutely positioned. -->
+    <div class="wizard-page platform-picker" id="page-platform" data-step="platform">
+      <div class="picker-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+      <div class="wizard-step-title" data-i18n="platformStepTitle">Where are we publishing?</div>
+      <div id="platformCards"></div>
+    </div>
+
+    <!-- PURPOSE · what are you creating? (Step 2) — UI_SPEC.md §9, 1728×960
+         reference frame. Own floating logo (figma-chrome hides the shared
+         topbar's brand); Back+title centered as a header block; overlapping
+         circle row below, one circle per purpose this platform has. -->
+    <div class="wizard-page purpose-picker" id="page-purpose" data-step="purpose">
+      <div class="picker-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+      <div class="purpose-header">
+        <button type="button" class="purpose-back-link" onclick="goBackNav()" data-i18n-aria="back" aria-label="Back"><span class="purpose-back-arrow" aria-hidden="true">←</span><span data-i18n="back">Back</span></button>
+        <div class="wizard-step-title" data-i18n="purposeStepTitle">What are you creating?</div>
+      </div>
+      <div id="purposeCards"></div>
+    </div>
+
+    <!-- FORM · Step A: content for the chosen purpose (Step 3a) —
+         GENERATOR_CORRECTIONS.md §3 supersedes UI_SPEC.md §10's single
+         combined form. Photo/Heading/Subheading only; date/rubric now live on
+         their own Step B (#page-details) reached via Next, not Generate.
+         Own floating logo; a single centered 580px column instead of the
+         48/52-split wizard card used elsewhere. -->
+    <div class="wizard-page content-form-page" id="page-form" data-step="form">
+      <div class="picker-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+      <div class="content-form-col">
+        <div class="wizard-step-title" data-i18n="formStepTitle">Add your content</div>
+
+        <!-- Photo (ADD_YOUR_CONTENT_CORRECTIONS.md, refined by
+             NID_GENERATOR_COMBINED_CORRECTIONS.md Part I §3/§5): two mutually-
+             exclusive states toggled by updateImgButtons() — the dashed
+             dropzone (button + hint on one row) before a photo exists, and a
+             compact 176px-tall photo after, itself the replace control and
+             framed in its own 12px-padded dashed box, hover/focus dims the
+             photo alone to 70% and reveals a red upload-icon circle at full
+             opacity. No separate "Replace photo" button — that only exists in
+             the final editor's own panel, untouched by this correction. -->
+        <div class="form-section" id="formPhotoSection">
+          <div class="form-field-label"><span data-i18n="postPhoto">Photo</span><span class="field-req-tag" id="formPhotoReqTag"></span></div>
+          <div class="photo-dropzone" id="photoDropzone">
+            <button class="action-btn action-btn--outline" id="addBtn"><span data-i18n="addImage">Add photo</span></button>
+            <span class="photo-dropzone-hint" data-i18n="photoDropHint">or drag and drop a photo here</span>
+          </div>
+          <div class="wizard-photo-frame" id="wizardPhotoFrame">
+            <button type="button" class="wizard-photo-preview" id="wizardPhotoPreview" data-i18n-aria="changePhotoLabel" aria-label="Change photo">
+              <img id="wizardPhotoPreviewImg" src="" alt="">
+              <span class="wizard-photo-replace-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+            </button>
+          </div>
+          <div class="input-hint" id="photoHint"></div>
+        </div>
+
+        <div class="form-section" id="formTitleSection">
+          <div class="form-field-label"><span data-i18n="postTitle">Headline</span><span class="field-req-tag" id="formTitleReqTag"></span><span class="char-limit-msg" id="titleInputLimitMsg"></span></div>
+          <textarea id="titleInput" placeholder="Old abbey of the Canons Regular" rows="2" maxlength="80"></textarea>
+          <div class="input-hint" id="titleHint"></div>
+        </div>
+
+        <div class="form-section" id="formSubheadingSection">
+          <div class="form-field-label"><span data-i18n="subheading">Subheading</span><span class="field-req-tag optional-tag" data-i18n="optionalTag">Optional</span><span class="char-limit-msg" id="subheadingInputLimitMsg"></span></div>
+          <textarea id="subheadingInput" placeholder="A talk with the channel’s creators" rows="2" maxlength="300"></textarea>
+        </div>
+
+        <!-- Bottom Back/Next pair (NID_GENERATOR_COMBINED_CORRECTIONS.md Part
+             I §2) — supersedes the earlier top back-link on this screen. -->
+        <div class="content-form-actions">
+          <button type="button" class="btn btn-back" onclick="goBackNav()" data-i18n="back">Back</button>
+          <button class="btn btn-gen" id="formNextBtn" onclick="submitContentStep()" data-i18n="next">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAILS · Step B: "Add more details if it needed" (Step 3b) —
+         GENERATOR_CORRECTIONS.md §3. Copy is exactly as supplied, typo
+         included, pending a designer revision. Holds the unified 8-pill
+         date/rubric selector (still the same MODAL_BADGE_OPTIONS model the
+         edit-text modal uses) and Generate post. Reached only from Step A's
+         Next for formats that have any detail option at all — see
+         submitContentStep()/platformCanBadge() in script.js for the one
+         format (Facebook event cover) that has none and skips this screen
+         entirely, an explicit judgment call flagged for designer review. -->
+    <div class="wizard-page content-form-page" id="page-details" data-step="details">
+      <div class="picker-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+      <div class="content-form-col">
+        <div class="wizard-step-title" data-i18n="detailsStepTitle">Add more details if it needed</div>
+
+        <div class="form-section" id="formBadgeSection">
+          <div class="pill-row" id="formBadgePills"></div>
+
+          <div class="form-field-block" id="formRubricSection" style="display:none">
+            <div class="form-field-label"><span data-i18n="rubric">Rubric</span><span class="char-limit-msg" id="topicInputLimitMsg"></span></div>
+            <input type="text" id="topicInput" placeholder="European Archaeology Days" maxlength="35">
+          </div>
+
+          <div class="form-field-block" id="formDateLabelBlock" style="display:none">
+            <div class="form-field-label" id="formDateLabel" data-i18n="stepDateName">Date</div>
+          </div>
+          <div class="date-group" id="formGroupSingle" style="display:none">
+            <div class="date-fields">
+              <input type="text" id="dSingleD" placeholder="DD" maxlength="2" inputmode="numeric">
+              <input type="text" id="dSingleM" placeholder="MM" maxlength="2" inputmode="numeric">
+              <input type="text" id="dSingleY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+            </div>
+          </div>
+          <!-- Same dRSD.../dRED... fields for both layouts — only the
+               container's layout class and the two labels' text change
+               (setFormBadge()), per which pill is active: standalone "Date
+               range" stacks From/To vertically, "Rubric & Date range" lays
+               Start date/End date out as two columns. -->
+          <div class="date-group" id="formGroupRange" style="display:none">
+            <div class="date-col">
+              <div class="field-label" id="formRangeStartLabel" data-i18n="startDate">Start date</div>
+              <div class="date-fields">
+                <input type="text" id="dRSD" placeholder="DD" maxlength="2" inputmode="numeric">
+                <input type="text" id="dRSM" placeholder="MM" maxlength="2" inputmode="numeric">
+                <input type="text" id="dRSY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+              </div>
+            </div>
+            <div class="date-col">
+              <div class="field-label" id="formRangeEndLabel" data-i18n="endDate">End date</div>
+              <div class="date-fields">
+                <input type="text" id="dRED" placeholder="DD" maxlength="2" inputmode="numeric">
+                <input type="text" id="dREM" placeholder="MM" maxlength="2" inputmode="numeric">
+                <input type="text" id="dREY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+              </div>
+            </div>
+          </div>
+          <div class="form-field-block" id="formYearLabelBlock" style="display:none">
+            <div class="form-field-label" data-i18n="mDateYear">Year</div>
+          </div>
+          <div class="date-group" id="formGroupYear" style="display:none">
+            <div class="date-fields">
+              <input type="text" id="dYear" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+            </div>
+          </div>
+          <div class="input-hint" id="formDateHint"></div>
+        </div>
+
+        <div class="input-hint" id="formBadgeHint"></div>
+
+        <div class="content-form-actions">
+          <button type="button" class="btn btn-back" onclick="goBackNav()" data-i18n="back">Back</button>
+          <button class="btn btn-gen" id="detailsGenerateBtn" onclick="completeGeneration()" data-i18n="generate">Generate a post</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stepPages -->
+
+  <!-- DESIGN · final screen (panel left, gallery right) -->
+  <div id="finalPage">
+    <div class="adjust-scrim" id="adjustScrim" aria-hidden="true"></div>
+
+    <!-- LEFT: logo + controls (top), variants, drafts (bottom) -->
+    <div class="panel">
+      <div class="final-brand"><img class="brand-icon" src="assets/logo_generator.svg" alt="NID"></div>
+
+      <div class="panel-controls">
+        <button class="btn btn-soft" id="editTextBtn" data-i18n="editText">Edit text</button>
+        <div class="panel-actions">
+          <button class="btn btn-soft" id="adjustPhotoBtn" data-i18n="adjustPhoto">Adjust photo</button>
+          <button class="btn btn-soft" id="replaceImageBtn" data-i18n="replaceImage">Replace photo</button>
+        </div>
+        <div class="diamond-toggle" id="diamondToggle">
+          <div class="diamond-toggle-thumb" id="diamondThumb" aria-hidden="true"></div>
+          <button type="button" class="diamond-opt" id="diamondsOffBtn" data-i18n="diamondsOff" onclick="setDiamonds(false)">Without diamonds</button>
+          <button type="button" class="diamond-opt active" id="diamondsOnBtn" onclick="setDiamonds(true)">
+            <svg class="diamond-toggle-icon" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M20 10C16.1456 12.7623 12.7623 16.1456 10 20C7.23769 16.1456 3.85439 12.7623 0 10C3.85439 7.23233 7.23769 3.84904 10 0C12.7623 3.84904 16.1456 7.23233 20 10Z" fill="currentColor"/></svg>
+            <span data-i18n="diamondsOn">Diamonds</span>
+          </button>
+        </div>
+        <div class="palette-mini" id="bgColorSection"><div class="palette" id="palette"></div></div>
+        <div class="palette-mini" id="blobColorSection" style="display:none"><div class="palette" id="blobPalette"></div></div>
+      </div>
+
+      <!-- "Variants" = saved drafts only (Save draft fills a slot) — 8 slots,
+           2 rows × 4, grey placeholders for the rest. Not the generated-design
+           strip, which lives on the right next to the preview. -->
+      <div class="panel-variants" id="panelVariants">
+        <div class="variants-heading" data-i18n="variantsHeading">Variants</div>
+        <div class="variants-grid" id="draftsList"></div>
+      </div>
+    </div>
+
+    <!-- Everything format-positioned (preview box, buttons, reuse link, strip)
+         lives in one 1328×1040 stage that scales as a unit for other window
+         sizes (FINAL_EDITOR_CORRECTIONS.md) — see applyStageScale() in
+         script.js. .panel is deliberately outside it: fixed 400px, its own
+         scroll, never shrinks. -->
+    <div class="final-stage-viewport">
+      <div class="final-stage" id="finalStage">
+
+        <!-- CENTER: poster — a format-dependent absolutely-positioned box (see
+             applyEditorLayout() / --box-* custom properties), the artwork itself
+             still auto-fits and centers inside it via the existing flex logic. -->
+        <div class="final-main">
+          <div class="final-canvas-wrap">
+            <div class="canvas-outer">
+              <div class="canvas-frame">
+                <img class="adjust-photo-layer" id="adjustPhotoLayer" alt="" aria-hidden="true">
+                <canvas id="preview"></canvas>
+                <div class="drag-hint" id="dragHint" data-i18n="dragHint">Drag the photo to reposition it</div>
+              </div>
+              <div class="final-photo-actions">
+                <div class="adjust-panel" id="adjustPanel">
+                  <div class="adjust-zoom-col">
+                    <div class="adjust-heading" data-i18n="zoomLabel">Zoom</div>
+                    <input type="range" id="zoomSlider" min="0" max="100" step="1" value="0" data-i18n-aria="zoomLabel" aria-label="Zoom">
+                  </div>
+                  <div class="adjust-actions">
+                    <button class="btn btn-gen" id="adjustDone" data-i18n="done">Done</button>
+                    <button class="action-btn" id="adjustReset" data-i18n="reset">Reset</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save/Download row: y=864 in every format, independent of the
+             preview box's own height — not nested inside .final-main. -->
+        <div class="final-cta">
+          <button class="btn btn-soft" id="saveDraftBtn" data-i18n="saveDraft" data-i18n-title="saveDraftHint">Save variant</button>
+          <button class="btn btn-gen" id="saveBtn" data-i18n="download" data-i18n-title="downloadHint">Download post</button>
+        </div>
+
+        <div class="reuse-row">
+          <button type="button" class="reuse-toggle" id="reuseToggle" data-i18n="reuseOffer">Make this for another platform?</button>
+        </div>
+
+        <!-- RIGHT: generated design suggestions for the current content —
+             selecting one updates the large preview. Not saved drafts (see
+             .panel-variants). -->
+        <div class="variants-strip-col" id="variantsCol">
+          <div class="variants-strip" id="filmstrip"></div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- /finalPage -->
+
+</div><!-- /app -->
+
+<!-- Edit-text modal -->
+<!-- Edit-text modal — UI_SPEC.md §11, 640px-wide reference frames (Year, Rubric,
+     Rubric & Date range, Rubric & Year, Rubric & Date, One date, No details).
+     Flat Heading → optional Subheading → pills → conditional fields, no
+     "Required"/"Optional" section headers (Figma doesn't show them). -->
+<div class="modal-overlay" id="editModal" style="display:none">
+  <div class="modal">
+    <button class="modal-close" id="modalClose" data-i18n-aria="closeLabel" aria-label="Close">×</button>
+    <div class="modal-head">
+      <div class="modal-title" data-i18n="editText">Edit text</div>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Formats with no headline at all (recognition path, e.g. YouTube cover)
+           hide this whole block — see openEditModal. -->
+      <section class="modal-section" id="mRequiredSection">
+        <div class="field-block">
+          <div class="field-label"><span data-i18n="postTitle">Headline</span><span class="field-req-tag required-tag" data-i18n="requiredTag">Required</span><span class="char-limit-msg" id="mTitleLimitMsg"></span></div>
+          <textarea id="mTitle" rows="2" maxlength="80"></textarea>
+          <div class="input-hint" id="mTitleHint"></div>
+        </div>
+      </section>
+
+      <section class="modal-section">
+        <div class="field-block" id="mSubBlock">
+          <div class="field-label"><span data-i18n="subheading">Subheading</span><span class="field-req-tag optional-tag" data-i18n="optionalTag">Optional</span><span class="char-limit-msg" id="mSubLimitMsg"></span></div>
+          <textarea id="mSub" rows="2" maxlength="300"></textarea>
+        </div>
+
+        <div class="field-block field-block--date" id="mDateFieldBlock">
+          <!-- Populated by renderModalBadgeOptions(): one pill per date/rubric combination
+               (Figma Components/Filter Toolbar) — replaces the old separate date-type row
+               + always-visible rubric field with a single choice covering both. -->
+          <div class="pill-row" id="mDateType"></div>
+
+          <div class="field-block" id="mRubricBlock" style="display:none">
+            <div class="field-label"><span data-i18n="rubric">Rubric</span><span class="char-limit-msg" id="mRubricLimitMsg"></span></div>
+            <input type="text" id="mRubric" maxlength="35">
+            <div class="input-hint" id="mRubricHint"></div>
+          </div>
+
+          <div class="field-block" id="mDateLabelBlock" style="display:none">
+            <div class="field-label" id="mDateLabel" data-i18n="stepDateName">Date</div>
+          </div>
+          <div class="date-group" id="mGroupSingle" style="display:none">
+            <div class="date-fields">
+              <input type="text" id="mSingleD" placeholder="DD" maxlength="2" inputmode="numeric">
+              <input type="text" id="mSingleM" placeholder="MM" maxlength="2" inputmode="numeric">
+              <input type="text" id="mSingleY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+            </div>
+          </div>
+          <!-- Same mRSD.../mRED... fields for both layouts — see the matching
+               comment on #formGroupRange in index.html's Step B markup. -->
+          <div class="date-group" id="mGroupRange" style="display:none">
+            <div class="date-col">
+              <div class="field-label" id="mRangeStartLabel" data-i18n="startDate">Start date</div>
+              <div class="date-fields">
+                <input type="text" id="mRSD" placeholder="DD" maxlength="2" inputmode="numeric">
+                <input type="text" id="mRSM" placeholder="MM" maxlength="2" inputmode="numeric">
+                <input type="text" id="mRSY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+              </div>
+            </div>
+            <div class="date-col">
+              <div class="field-label" id="mRangeEndLabel" data-i18n="endDate">End date</div>
+              <div class="date-fields">
+                <input type="text" id="mRED" placeholder="DD" maxlength="2" inputmode="numeric">
+                <input type="text" id="mREM" placeholder="MM" maxlength="2" inputmode="numeric">
+                <input type="text" id="mREY" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+              </div>
+            </div>
+          </div>
+          <div class="field-block" id="mYearLabelBlock" style="display:none">
+            <div class="field-label" data-i18n="mDateYear">Year</div>
+          </div>
+          <div class="date-group" id="mGroupYear" style="display:none">
+            <div class="date-fields">
+              <input type="text" id="mYear" placeholder="YYYY" maxlength="4" inputmode="numeric" class="year-field">
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-gen" id="mGenerateBtn" data-i18n="generateAgain">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- "Make this for another platform?" — REUSE_PLATFORM_MODAL.md, node 1957:8460,
+     1728×1040 reference frame. renderReuseOptions() still builds #reuseOptions'
+     children (unchanged logic, just a new home + bigger pill styling); each
+     pill's hover color is picked at random from 4 options on pointer/focus
+     entry — see bindReuseHover() in script.js. -->
+<div class="modal-overlay" id="reuseModal" style="display:none">
+  <div class="modal reuse-modal">
+    <button class="modal-close" id="reuseModalClose" data-i18n-aria="closeLabel" aria-label="Close">×</button>
+    <div class="modal-head">
+      <div class="modal-title" data-i18n="reuseModalTitle">Where else do we publish?</div>
+    </div>
+    <div class="modal-body">
+      <div class="reuse-pill-row" id="reuseOptions"></div>
+    </div>
+  </div>
+</div>
+
+<!-- "Download post" — REUSE_PLATFORM_MODAL.md, nodes 1961:8680 / 1961:8705,
+     1728×1040 reference frames. Card 0 is always the exact live preview
+     (current, selected by default); cards 1..N are the saved Variants drafts
+     in their saved order. Built by openDownloadModal()/renderDownloadCards()
+     in script.js. -->
+<div class="modal-overlay" id="downloadModal" style="display:none">
+  <div class="modal download-modal">
+    <button class="modal-close" id="downloadModalClose" data-i18n-aria="closeLabel" aria-label="Close">×</button>
+    <div class="modal-head">
+      <div class="modal-title" data-i18n="downloadModalTitle">Which variants would you like to download?</div>
+    </div>
+    <div class="modal-body">
+      <div class="dl-grid" id="downloadCards"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-gen" id="downloadSelectedBtn" disabled></button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+
+<script src="script.js"></script>
+<!-- GSAP + Flip (nid-generator-gsap-motion-system.md) — motion.js checks for
+     both before using them and falls back to the plain, unanimated behavior
+     already implemented in script.js if either fails to load (offline use,
+     CDN outage), so the app never depends on them to function. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Flip.min.js"></script>
+<script src="motion.js"></script>
+</body>
+</html>

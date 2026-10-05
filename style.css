@@ -1,0 +1,848 @@
+@font-face {
+  font-family: 'NocturneSans';
+  src: url('fonts/NocturneSans.otf') format('opentype');
+  font-weight: 500;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+/* Selected cool-gray family (NID_Generator_Purpose_Variants_Gray_Proposal.md
+   §5; softened per the "(1)" revision of the same doc — only the hex values
+   changed, the semantic roles are the same) — one consistent set of neutral
+   roles replacing the prior assortment of #E6E6E7/#D1D5DB/#BBBBBB/#9A9A9A ad
+   hoc grays. Brand red, dark text, and page backgrounds are unaffected and
+   stay as literals where they already were. The mini-preview pocket edge
+   (separately specified) intentionally keeps its own literal #ADB6BB rather
+   than following --ui-neutral-border here. */
+:root {
+  --ui-neutral-fill: #E8ECEE;   /* resting gray bubbles, neutral buttons, segmented-control shells, slider tracks */
+  --ui-neutral-hover: #DCE2E5;  /* hover/pressed fill for the same neutral surfaces */
+  --ui-neutral-border: #B9C1C5; /* 1.5px strokes: inputs, textareas, date fields, upload frames, outlined controls, modal fields, Adjust Photo toolbar */
+  --ui-muted-text: #6D767B;     /* placeholder examples, helper text, secondary labels, the Back link */
+  --ui-quiet-surface: #F2F4F5;  /* empty variant slots / intentionally-disabled backgrounds */
+}
+/* Motion system's fullscreen white transition (very fast opacity flash, not
+   a sliding wipe — see withWipe() in motion.js) — transparent at rest so it
+   never shows a stray white cover or intercepts clicks (pointer-events:none
+   throughout, not just at rest) when GSAP hasn't loaded. */
+#wipeLayer { position: fixed; inset: 0; background: #fff; z-index: 9999; pointer-events: none; opacity: 0; }
+/* Type scale (confirmed): 32 / 20 / 16 / 12px, always Nocturne Sans Medium,
+   100% line-height, 0 letter-spacing — no other combination is used anywhere
+   in the product. Nocturne Sans is the default font for the whole app now
+   (was the system stack, with per-element overrides scattered across dozens
+   of rules) so every live text element gets it without needing its own
+   font-family declaration; explicit `font-family: 'NocturneSans', ...`
+   further down is only left where a rule sits right next to sizing it does
+   need to state anyway.
+   button/input/textarea/select and h1–h6 each carry their own UA-stylesheet
+   font defaults (e.g. a button's own system font, h1's bold) that a plain
+   `body { font-weight/line-height }` does NOT reach by inheritance — any
+   rule that targets the element directly, even a UA one, beats an inherited
+   value. `font: inherit` resets all of it (family/size/weight/line-height)
+   to whatever the element's own more specific class rule sets afterward. */
+button, input, textarea, select, h1, h2, h3, h4, h5, h6 { font: inherit; }
+body { font-family: 'NocturneSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 500; line-height: 1; letter-spacing: normal; background: #FFFFFF; color: #1A1A1A; display: flex; flex-direction: column; height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-synthesis: none; }
+
+.panel { width: 400px; min-width: 400px; background: #FFFFFF; border-left: 1px solid #EAEAEA; padding: 24px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+.field-label { font-size: 16px; text-transform: none; letter-spacing: normal; color: #2E2A25; margin-bottom: 6px; }
+textarea, input[type=text] { width: 100%; background: #FAFAFA; border: 1.5px solid var(--ui-neutral-border); border-radius: 8px; color: #1A1A1A; font-family: inherit; font-size: 16px; padding: 9px 11px; resize: vertical; transition: border-color .12s; }
+textarea:focus, input[type=text]:focus { outline: none; border-color: #AAAAAA; }
+textarea { min-height: 68px; }
+.palette { display: flex; gap: 5px; flex-wrap: wrap; }
+.btn { flex: 1; padding: 11px; border-radius: 10px; border: none; font-family: inherit; font-size: 16px; cursor: pointer; transition: all .12s; }
+.btn-gen { background: #E03211; color: #fff; }
+.btn-gen:hover { background: #c02a0e; }
+.canvas-outer { position: relative; }
+canvas { display: block; border-radius: 3px; cursor: grab; }
+canvas:active { cursor: grabbing; }
+.action-btn { background: #FFFFFF; border: 1.5px solid var(--ui-neutral-border); color: rgba(0,0,0,0.55); border-radius: 8px; padding: 8px 12px; font-size: 16px; font-family: inherit; cursor: pointer; white-space: nowrap; transition: all .12s; }
+.action-btn:hover { background: var(--ui-neutral-hover); color: rgba(0,0,0,0.8); }
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #EAEAEA; flex-shrink: 0; }
+.topbar h1 { font-size: 16px; color: #1A1A1A; letter-spacing: normal; }
+#app { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+.btn-outline { background: transparent; color: rgba(0,0,0,0.55); border: 1.5px solid var(--ui-neutral-border); }
+.btn-outline:hover { color: rgba(0,0,0,0.8); border-color: #AAAAAA; }
+
+/* ── step pages (title / date / rubric / subheading / photo) ── */
+#stepPages { flex: 1; min-width: 0; }
+.wizard-page { display: none; flex: 1; align-items: flex-start; justify-content: center; padding: 32px; overflow-y: auto; }
+.wizard-page.is-current { display: flex; }
+.wizard-card { width: 100%; max-width: 460px; }
+.wizard-actions { display: flex; gap: 10px; margin-top: 26px; }
+.wizard-actions .btn { flex: 1; padding: 12px; }
+.wizard-photo-preview { margin-top: 16px; display: none; }
+.wizard-photo-preview.show { display: block; }
+.wizard-photo-preview img { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; }
+
+.photo-dropzone { border: 1.5px dashed var(--ui-neutral-border); border-radius: 12px; padding: 16px; transition: border-color .14s, background .14s; }
+.photo-dropzone.is-dragover { border-color: #E03211; background: rgba(224,50,17,0.04); }
+.photo-dropzone-hint { font-size: 12px; color: var(--ui-muted-text); margin-top: 12px; }
+
+.palette-mini { display: flex; align-items: center; gap: 6px; }
+
+/* ═══ Clean redesign · airy, line-less, no plate marks, no shadows ═══ */
+
+/* Structure by spacing, not borders */
+.topbar { border-bottom: none; }
+
+/* ── Branding (top-left NID mark + product title) ── */
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-icon.is-home-link { cursor: pointer; }
+.brand-icon.is-home-link:focus-visible { outline: 1.5px solid #2E2A25; outline-offset: 4px; border-radius: 4px; }
+.brand-icon { width: 30px; height: 30px; border-radius: 0; display: block; flex-shrink: 0; }
+
+/* ── Wizard cards (no marks, no boxes — plain type + fields) ── */
+.wizard-card { padding: 8px 0; }
+
+/* Every wizard screen starts its card at 30% of the viewport height (--header-h is measured in JS) */
+.wizard-page { padding-top: max(24px, calc(30vh - var(--header-h, 114px))); }
+
+/* ── Password gate (Part VI) — its own floating logo/lang-switch (figma-chrome,
+   like the platform/purpose pickers) and a single centered content stack,
+   overriding .wizard-page's default top-anchored/left-aligned layout. */
+.gate-page { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; overflow: clip; flex-direction: column; align-items: center; justify-content: center; }
+/* Shared scale target for the success acknowledgment (NID_Generator_Save_
+   Arc_And_Password_Completion.md §2) — .gate-header and .gate-circles-wrap
+   move together as one composition, about their common centre, without
+   disturbing their own internal stacking/centering (reproduced here exactly
+   as .gate-page provided it for these two children before the wrapper). */
+.gate-composition { display: flex; flex-direction: column; align-items: center; }
+.gate-header .wizard-step-title { margin: 0; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; text-align: center; }
+/* Fluid group (same overlap mechanism as .purpose-circle): stays at the
+   reference 199px diameter down to ~1728px wide, then scales down together
+   with the viewport so all nine circles keep fitting on one row. */
+.gate-circles-wrap { position: relative; margin-top: 64px; --grp-w: min(1495px, 86.51vw); --circle-d: calc(var(--grp-w) * 0.13311); --circle-step: calc(var(--grp-w) * 0.10836); }
+.gate-circles { display: flex; pointer-events: none; }
+.gate-circle { flex-shrink: 0; width: var(--circle-d); height: var(--circle-d); border-radius: 50%; background: var(--ui-neutral-fill); transition: background-color .15s ease; }
+.gate-circle:not(:first-child) { margin-left: calc(var(--circle-step) - var(--circle-d)); }
+/* The real input sits invisibly over the whole circle row, so clicking
+   anywhere on it — not just a theoretical tiny caret — focuses it; visually
+   hidden (not display:none) so it stays keyboard-focusable and announced by
+   assistive tech, per Part VI's explicit accessibility requirement. */
+.gate-real-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: none; background: transparent; color: transparent; caret-color: transparent; opacity: 0; cursor: text; text-align: center; letter-spacing: normal; }
+.gate-real-input:focus { outline: none; }
+.gate-error { text-align: center; margin-top: 24px; }
+.wizard-step-title { font-family: 'NocturneSans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 32px; line-height: 1; letter-spacing: normal; color: #171717; margin-bottom: 12px; }
+
+.count, .field-label span[id$="Count"] { font-weight: 500; color: #A2A2A2 !important; font-variant-numeric: tabular-nums; }
+
+/* Required-field feedback: brief flash + a hint that fades out */
+textarea.is-invalid, input[type=text].is-invalid { border-color: #E03211; animation: fieldFlash .5s ease; }
+@keyframes fieldFlash { 0%, 100% { background: #FCFCFC; } 30% { background: #FBE9E4; } }
+.input-hint { font-size: 12px; color: #E03211; margin-top: 8px; opacity: 0; transform: translateY(-2px); transition: opacity .18s ease, transform .18s ease; pointer-events: none; }
+.input-hint.show { opacity: 1; transform: none; }
+
+/* actions: back + primary (+ optional secondary) */
+.wizard-actions { display: flex; gap: 10px; margin-top: 28px; }
+.wizard-actions .btn { flex: 1; padding: 14px 18px; border-radius: 14px; }
+.wizard-actions .btn-gen { display: inline-flex; align-items: center; justify-content: center; gap: 9px; letter-spacing: normal; transition: background .14s, transform .05s; }
+.wizard-actions .btn-gen::after { content: "\203A"; font-size: 12px; line-height: 1; transition: transform .16s; }
+.wizard-actions .btn-gen:hover::after { transform: translateX(3px); }
+.wizard-actions .btn-gen:active { transform: translateY(1px); }
+
+/* ── Pill button (Figma Controls/Date Option) — shared active/inactive treatment
+   for the modal's badge selector, the diamond toggle and the language switch.
+   No border, filled light-grey when off, solid black when on. Kept as its own
+   component (not merged into .date-type-btn) so it can evolve independently of
+   the platform/purpose/form wizard's own date-type row. */
+/* 71px height / 30px horizontal insets / 6px row+column gaps
+   (NID_Generator_Corrections.md — supersedes the earlier 55px/24px/4px
+   values); shared by the questionnaire's pill row and Edit text's date/
+   category pills, kept distinct from .reuse-modal-pill's own larger 123px
+   destination bubbles in the "Where else do we publish?" modal. */
+.pill-row { display: flex; gap: 6px; margin: 0 0 4px; flex-wrap: wrap; }
+/* Edit-text modal only (Part-Editor-Modal-Corrections §3): exactly 20px from
+   the bottom of the tag row's LAST wrapped line to the Category label below
+   it — margin-bottom on the row itself covers any wrap count automatically.
+   Toggled in setModalBadge() only when Category is actually the next visible
+   element, so date-only combos keep their original 4px gap to the date
+   group unchanged. */
+#mDateType.has-category-gap { margin-bottom: 20px; }
+.pill-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 71px; padding: 0 30px; border-radius: 1000px; border: none; background: var(--ui-neutral-fill); color: #2E2A25; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; cursor: pointer; transition: background .12s, color .12s; white-space: nowrap; }
+.pill-btn:hover { background: var(--ui-neutral-hover); }
+.pill-btn.active { background: #2E2A25; color: #fff; }
+.pill-btn.active:hover { background: #2E2A25; }
+.pill-btn svg { flex: 0 0 auto; }
+
+.lang-switch { display: flex; gap: 6px; }
+/* .lang-indicator (script.js's applyLanguage(), animated further by
+   motion.js's Flip wrapper) is a single shared element moved between the two
+   buttons' own DOM instead of each button flipping its own background
+   instantly — inset:0 makes it always exactly fill whichever button
+   currently contains it, in both the plain and figma-chrome skins below.
+   Explicit non-negative stacking, not z-index:-1 — a negative z-index isn't
+   reliably contained by a plain position:relative ancestor (no z-index of
+   its own), and could escape to paint BEHIND .lang-switch's own track
+   background instead of just behind this button's text. .lang-btn's own
+   z-index:0 gives it a real stacking context so the indicator (also 0) and
+   the label (1) are ordered only relative to each other, never able to leak
+   out and fight the track. */
+.lang-btn { position: relative; z-index: 0; padding: 6px 14px; border-radius: 999px; border: none; background: #EFEDE7; color: #6E6660; font-family: inherit; font-size: 12px; letter-spacing: normal; cursor: pointer; transition: color .18s ease; }
+.lang-btn:hover { background: #E4E1D8; }
+.lang-btn.active { color: #fff; }
+.lang-indicator { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: #1A1A1A; pointer-events: none; }
+.lang-btn-label { position: relative; z-index: 1; }
+
+/* Language switch, editor screen only (UI_SPEC.md §4): red 80×44 pill floating
+   at the frame's top-right inset, active option as a white circular selection.
+   The shared topbar (logo + title) is what every wizard step uses — on the
+   editor screen it's reduced to just this control and repositioned, rather than
+   duplicating a second lang-switch in the DOM. */
+body.figma-chrome .topbar { position: absolute; top: 44px; right: 44px; left: auto; padding: 0; border: none; background: transparent; width: auto; z-index: 5; }
+body.figma-chrome .topbar .brand { display: none; }
+body.figma-chrome .lang-switch { width: 80px; height: 44px; padding: 4px; gap: 0; border-radius: 1000px; background: #E03211; }
+body.figma-chrome .lang-btn { flex: 1; height: 100%; padding: 0; background: transparent; color: #fff; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 12px; font-weight: 500; letter-spacing: normal; }
+body.figma-chrome .lang-btn:hover { background: rgba(255,255,255,0.16); }
+body.figma-chrome .lang-btn.active { color: #E03211; }
+body.figma-chrome .lang-indicator { background: #fff; }
+
+/* ── Content form (UI_SPEC.md §10) — 1728×1349 reference frame (its tallest,
+   full-detail example; the column's real height is content-driven, sections
+   that don't apply to the active purpose are just display:none, never
+   reserved as empty space). A single centered 580px white column (widened
+   from 564px — NID_Generator_Corrections.md) with its own floating logo,
+   replacing the old .wizard-card--form card. */
+.content-form-page { position: relative; padding: 0; }
+.content-form-col { width: 580px; max-width: calc(100% - 32px); margin: 148px 0 64px; background: #fff; }
+/* 32px to the first form element on every branch (Part I §4) — the single
+   source of that gap (title's own margin-bottom); .form-section below has no
+   margin-top of its own, so this never stacks with a second margin. */
+.content-form-col > .wizard-step-title { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; margin-bottom: 32px; }
+
+.form-section { margin: 0 0 32px; }
+.form-field-block { margin-top: 20px; }
+.form-field-block:first-child { margin-top: 0; }
+.form-field-label { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; color: #2E2A25; margin-bottom: 10px; }
+.form-field-label .count { margin-left: auto; font-size: 12px; text-transform: none; letter-spacing: normal; }
+/* ADD_YOUR_CONTENT_CORRECTIONS.md: "Required"/"Optional" as sentence case
+   (not uppercase), Nocturne Sans Medium 12px, 4px radius, 6px padding on
+   every side — was 9.5px/uppercase/5px/2×7px. Shared by the content form,
+   the details step, and the edit-text modal, so all three stay consistent. */
+.field-req-tag { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 12px; font-weight: 500; letter-spacing: normal; text-transform: none; padding: 6px; border-radius: 4px; line-height: 1; }
+.field-req-tag.required-tag { background: #FFF3E7; color: #E03211; }
+.field-req-tag.optional-tag { background: #E0F4DB; color: #0B6B6C; }
+.field-req-tag.oneof-tag { background: #FFF3E7; color: #E03211; }
+
+/* Photo, headline and subheading controls (UI_SPEC.md §10): 4px radius,
+   #D1D5DB border, 16px copy — replacing the smaller/rounder wizard-card
+   input style for this page specifically. Font-family/placeholder color
+   are ADD_YOUR_CONTENT_CORRECTIONS.md additions — this rule never actually
+   set either before, so both silently fell back to the page's system font
+   and the browser's own placeholder gray instead of Nocturne Sans / #D1D5DB. */
+.content-form-col textarea, .content-form-col input[type=text] { background: #fff; border: 1.5px solid var(--ui-neutral-border); border-radius: 4px; font-family: 'NocturneSans', -apple-system, sans-serif; font-weight: 500; font-size: 16px; padding: 15px; }
+.content-form-col textarea::placeholder, .content-form-col input[type=text]::placeholder { color: var(--ui-muted-text); }
+.content-form-col textarea { min-height: 120px; }
+/* Headline/Subheading (NID_GENERATOR_COMBINED_CORRECTIONS.md Part I §1): fixed
+   height, never user-resizable — a permanent counter is replaced by the
+   char-limit-msg shown only at the max (see .char-limit-msg below), so these
+   don't need room to grow. min-height:0 overrides the shared textarea rule
+   above, whose min-height:120px would otherwise force Headline's 75px back up. */
+#titleInput, #mTitle { height: 75px; min-height: 0; resize: none; }
+#subheadingInput, #mSub { height: 123px; min-height: 0; resize: none; }
+
+/* Red "You've reached the N-character limit" message (Part I §1) — replaces
+   the old permanent X/Y counter; empty and invisible except exactly at max. */
+.char-limit-msg { margin-left: auto; font-size: 12px; font-weight: 500; color: #E03211; text-transform: none; letter-spacing: normal; white-space: nowrap; }
+
+/* Not-added state: dashed zone, button + hint side by side on one row
+   (12px gap), never wrapping at the column's own width. */
+.content-form-col .photo-dropzone { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; border: 1.5px dashed var(--ui-neutral-border); border-radius: 4px; padding: 20px; }
+.content-form-col .photo-dropzone-hint { flex: 1 1 auto; min-width: 0; font-size: 16px; color: var(--ui-muted-text); margin: 0; white-space: normal; }
+.content-form-col .action-btn--outline { flex: 0 0 auto; background: transparent; border: 1.5px solid #E03211; color: #E03211; border-radius: 4px; height: 55px; padding: 0 22px; font-size: 16px; font-weight: 500; }
+.content-form-col .action-btn--outline:hover { background: rgba(224,50,17,0.06); color: #E03211; }
+
+/* Photo-added state: a compact 176px-tall preview, width following the
+   photo's own aspect ratio — not the old dropzone's height, and no separate
+   Replace button. The image itself is the replace control: hover/focus
+   dims the PHOTO ONLY (Part I §3 — no other effect) and reveals a centered
+   red upload-icon circle at full opacity; the whole thing is one <button>,
+   so a touch tap (no hover state) still works. The dashed frame (Part I §5)
+   hugs the photo's own rendered width, 12px padding on every side, rather
+   than stretching full column width. */
+.content-form-col .wizard-photo-frame { display: none; }
+.content-form-col .wizard-photo-frame.show { display: inline-flex; padding: 12px; border: 1.5px dashed var(--ui-neutral-border); border-radius: 4px; }
+/* margin:0 overrides the legacy .wizard-photo-preview base rule's
+   margin-top:16px (pre-dashed-frame leftover) — inside the new 12px-padded
+   .wizard-photo-frame, a flex item's own margin still counts toward the
+   frame's auto height, which was otherwise adding 16px above the photo but
+   not below it. */
+.content-form-col .wizard-photo-preview { display: none; position: relative; height: 176px; width: auto; margin: 0; padding: 0; border: none; background: none; cursor: pointer; border-radius: 4px; overflow: hidden; }
+.content-form-col .wizard-photo-preview.show { display: inline-block; }
+.content-form-col .wizard-photo-preview img { display: block; height: 176px; width: auto; max-width: 100%; transition: opacity .15s ease; }
+.content-form-col .wizard-photo-preview:hover img,
+.content-form-col .wizard-photo-preview:focus-visible img { opacity: 0.7; }
+.content-form-col .wizard-photo-replace-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border-radius: 50%; background: #E03211; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+.content-form-col .wizard-photo-preview:hover .wizard-photo-replace-icon,
+.content-form-col .wizard-photo-preview:focus-visible .wizard-photo-replace-icon { opacity: 1; }
+.content-form-col .wizard-photo-preview:focus-visible { outline: 1.5px solid #E03211; outline-offset: 2px; }
+
+.content-form-col .date-group { margin-top: 20px; margin-bottom: 0; }
+/* A visible "Date"/"Year" label directly above the group (Rubric-paired single
+   date/year, Part III) supplies its own bottom margin instead — see
+   #formDateLabelBlock etc. below — so the two don't stack to 20+14px. */
+.content-form-col .date-group.date-group--labeled,
+.modal .date-group.date-group--labeled { margin-top: 0; }
+/* Rubric & Date range: two equal columns, 20px apart (Part III). */
+.date-group--range { display: flex; gap: 20px; }
+.date-group--range .date-col { flex: 1; min-width: 0; }
+/* Standalone Date range: two stacked "From"/"To" blocks, 20px apart — was
+   incorrectly sharing .date-group--range's 2-column layout for both cases. */
+.date-group--stack { display: flex; flex-direction: column; gap: 20px; }
+.date-col .field-label { margin-bottom: 14px; }
+
+/* Detail-field label blocks (Part III) — "Date"/"Year" only appear paired
+   with a category (setFormBadge()/setModalBadge() toggle these); the label's
+   own bottom margin becomes the 14px label-to-field gap once the group's own
+   top margin is zeroed above, instead of the two collapsing to whichever is larger. */
+#formDateLabelBlock, #formYearLabelBlock { margin-bottom: 14px; }
+#formDateLabelBlock .form-field-label, #formYearLabelBlock .form-field-label { margin-bottom: 0; }
+/* margin-top:20px is explicit (not left to .field-block + .field-block,
+   which only fires between DOM-adjacent .field-blocks) because #mRubricBlock,
+   #mDateLabelBlock and #mYearLabelBlock aren't always DOM-adjacent to each
+   other — e.g. rubric-year's #mYearLabelBlock sits after the hidden (but
+   still present) #mDateLabelBlock/#mGroupSingle/#mGroupRange, so the
+   adjacency selector silently didn't match and this gap collapsed to 0. */
+#mDateLabelBlock, #mYearLabelBlock { margin-top: 20px; margin-bottom: 14px; }
+#mDateLabelBlock .field-label, #mYearLabelBlock .field-label { margin-bottom: 0; }
+
+/* Detail fields (date segments + Rubric/Category) — 71px height (global
+   standard-input height, matching the buttons — NID_Generator_Corrections.md;
+   supersedes Part III's original 55px), 24px horizontal padding, 1.5px
+   border (NID_Generator_Hide_Preview_Scroll_Indicators.md §6 — was 1px),
+   scoped so Photo/Headline/Subheading's own 1.5px-border/15px-padding rule
+   above (line ~182) is unaffected. */
+.content-form-col .date-fields input[type=text],
+.modal .date-fields input[type=text],
+#topicInput, #mRubric {
+  height: 71px; padding: 0 24px; border: 1.5px solid var(--ui-neutral-border);
+}
+/* One contiguous 3-segment group (Day/Month/Year) — was gap:7px with fixed
+   52px/74px boxes and separate "." dot spans between them (Part III). Segments
+   touch (1.5px overlap via negative margin, matching the 1.5px border above —
+   was -1px) with straight internal joints; only the group's own outer
+   corners are rounded. */
+.date-fields { display: flex; margin-top: 4px; }
+.date-fields input[type=text] { flex: 1 1 0; width: auto; min-width: 0; margin: 0; border-radius: 0; position: relative; text-align: center; }
+.date-fields input[type=text]:not(:first-child) { margin-left: -1.5px; }
+.date-fields input[type=text]:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.date-fields input[type=text]:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.date-fields input[type=text]:focus { z-index: 1; }
+.date-fields input.year-field { flex: 1.4 1 0; }
+
+#formNextBtn, #detailsGenerateBtn { width: 100%; height: 71px; border-radius: 4px; font-size: 16px; margin-top: 0; }
+/* The 32px gap to the last visible field (ADD_YOUR_CONTENT_CORRECTIONS.md)
+   comes from .form-section's own 32px margin-bottom collapsing into this
+   margin-top — NOT from also adding a margin on the button itself, which
+   sits inside .wizard-actions' flex context and can't collapse with
+   anything outside it, so the two would otherwise stack to 64px. */
+.content-form-col .wizard-actions { margin-top: 32px; }
+
+/* Bottom Back+primary row (Part I §2) — supersedes the old top text-link
+   Back on these two screens; the same 32px-collapse mechanism as
+   .wizard-actions above (kept on the row itself, not the buttons, or the
+   two would stack to 64px). */
+.content-form-col .content-form-actions { display: flex; gap: 8px; margin-top: 32px; }
+.content-form-col .content-form-actions .btn { flex: 1 0 0; height: 71px; padding: 24px 28px; border-radius: 4px; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; text-align: center; }
+.content-form-col .btn-back { background: var(--ui-neutral-fill); color: #2E2A25; }
+.content-form-col .btn-back:hover { background: var(--ui-neutral-hover); }
+
+/* ── Platform picker (UI_SPEC.md §8, GENERATOR_CORRECTIONS.md §1) — 1668×960
+   reference frame, own floating logo (figma-chrome hides the shared topbar),
+   centered heading, and a fluid row of icon buttons that hangs off the bottom
+   edge until hovered/focused, when the hovered one lifts and swaps from the
+   gray resting icon to its brand color. Icons scale with viewport width
+   (correction §1) rather than staying a fixed 390px row with a horizontal
+   scroll fallback, so overflow stays hidden on both axes now — nothing to
+   reach by scrolling any more, only the deliberate bottom clip. */
+/* overflow:clip (not hidden) — hidden is still a scroll container that a
+   keyboard focus() on one of the icons would scroll into view, breaking the
+   fixed 44px logo position and the deliberate bottom clip; clip disables
+   scrolling altogether, matching this page's fully static design. */
+.platform-picker { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; overflow: clip; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.picker-brand { position: absolute; left: 44px; top: 44px; }
+.picker-brand img { width: auto; height: 44px; display: block; }
+.platform-picker .wizard-step-title { position: absolute; left: 50%; top: 360px; transform: translateX(-50%); width: 504px; margin: 0; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; text-align: center; }
+/* Fluid row (GENERATOR_CORRECTIONS.md §1) — four equal square containers,
+   zero gap, scaling proportionally with viewport width instead of a fixed
+   390px row + horizontal scroll fallback. Outer inset is 54/1668 of width on
+   each side (=row width 93.5252%, centered by plain auto margins); each
+   container is exactly a quarter of that row and stays square via
+   aspect-ratio. Positioned so ~56.15% of the container's height (219/390 at
+   the reference size) stays above the viewport's bottom edge at rest —
+   expressed as a %-of-own-height translateY, so it holds at any size. */
+#platformCards { position: absolute; left: 0; right: 0; bottom: 0; width: 93.5252%; margin: 0 auto; display: flex; transform: translateY(43.8462%); }
+.platform-icon-btn { flex: 1 1 25%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: none; background: transparent; cursor: pointer; transition: transform .2s ease; }
+/* The lift is a % of the icon's OWN rendered height (CSS resolves translate
+   percentages against the element's own box), so it scales with viewport
+   width automatically — no vw/px math needed. 170/390 at the reference size. */
+.platform-icon-btn:hover, .platform-icon-btn:focus-visible { transform: translateY(-43.5897%); position: relative; z-index: 1; }
+.platform-icon-btn img { width: 93.2779%; height: 93.2779%; display: block; }
+.platform-icon-btn .icon-color { display: none; }
+.platform-icon-btn:hover .icon-gray, .platform-icon-btn:focus-visible .icon-gray { display: none; }
+.platform-icon-btn:hover .icon-color, .platform-icon-btn:focus-visible .icon-color { display: block; }
+.platform-icon-btn .icon-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+
+/* ── Purpose picker (UI_SPEC.md §9) — 1728×960 reference frame, same
+   figma-chrome/own-logo treatment as the platform picker. Circles are laid
+   out in normal flow (flex row, diameter-wide, width 591.238px) with a
+   negative margin on every circle after the first to produce the spec's
+   110.857px overlap — not position:absolute — so the same safe-center
+   fallback that kept Instagram reachable in §8 also protects this row if a
+   platform's fewer circles ever overflow a narrow viewport. */
+/* Fluid bubble group (GENERATOR_CORRECTIONS.md §2) — 88px left/right/bottom
+   viewport insets stay fixed at every width; circle diameter and center step
+   scale together via one ratio derived from the 3-circle Facebook reference
+   (591.238 / 1552 and 480.381 / 1552), applied uniformly regardless of how
+   many circles a platform has. At 3 circles this exactly fills edge to edge
+   between the insets, matching the spec's explicit numbers; 1–2 circle
+   pickers use the same per-viewport-width scale (so a circle is the same
+   size across platforms at a given width) and simply center in the same
+   band, narrower — not stretched to fill, which isn't specified and would
+   make a single circle implausibly large. Label size stays a fixed 32px
+   (never scaled) per the correction's explicit instruction. */
+.purpose-picker { position: relative; width: 100%; height: 100%; padding: 0; overflow: hidden; overflow: clip; flex-direction: column; align-items: stretch; justify-content: flex-start; --grp-w: calc(100vw - 176px); --circle-d: calc(var(--grp-w) * 0.3809254); --circle-step: calc(var(--grp-w) * 0.3095470); }
+/* Back restored above the title (NID_Generator_Purpose_Variants_Gray_Proposal.md
+   §1, Figma node 1926:5897) — left-aligned with the title's own left edge,
+   which falls out naturally here since align-items:center shrink-wraps this
+   column to its widest child (the title) and align-self:flex-start on the
+   link then sits flush with that shared left edge. */
+.purpose-header { position: absolute; left: 50%; top: 148px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 20px; white-space: nowrap; }
+.purpose-back-link { align-self: flex-start; display: flex; align-items: center; gap: 4px; padding: 0; border: none; background: none; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; line-height: 1; color: var(--ui-muted-text, #6D767B); cursor: pointer; }
+.purpose-back-link:hover { color: #2E2A25; }
+.purpose-back-arrow { font-size: 15px; }
+.purpose-header .wizard-step-title { position: static; margin: 0; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; text-align: center; }
+#purposeCards { position: absolute; left: 88px; right: 88px; bottom: 88px; height: var(--circle-d); display: flex; justify-content: center; }
+.purpose-circle { flex-shrink: 0; position: relative; width: var(--circle-d); height: var(--circle-d); border-radius: 50%; border: none; background: var(--ui-neutral-fill); display: flex; align-items: center; justify-content: center; padding: 0; font-family: inherit; cursor: pointer; transition: background-color .16s ease; }
+.purpose-circle:not(:first-child) { margin-left: calc(var(--circle-step) - var(--circle-d)); }
+.purpose-circle:hover, .purpose-circle:focus-visible { background: var(--hover-bg, var(--ui-neutral-fill)); z-index: 1; }
+.purpose-circle-label { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; text-align: center; pointer-events: none; transition: color .16s ease; }
+.purpose-circle:hover .purpose-circle-label, .purpose-circle:focus-visible .purpose-circle-label { color: var(--hover-text, #2E2A25); }
+
+.date-group { margin-bottom: 4px; }
+
+/* Required-field flash also works on the "Add photo" button */
+.action-btn.is-invalid { border-color: #E03211; color: #E03211; animation: fieldFlash .5s ease; }
+
+/* ── Final (Design) · clean white stage, panel on the left ──
+   Desktop shell per FINAL_EDITOR_CORRECTIONS.md (1728×1040 reference): the
+   preview box, action row, and generated-suggestions strip are format-
+   dependent — their geometry comes from CSS custom properties
+   applyEditorLayout() sets on #finalPage per platform (four named box
+   profiles — portrait, square, fbEvent, youtube — see EDITOR_BOX in
+   script.js). .panel stays normal-flow at a fixed 400px; everything else
+   lives in .final-stage (1328×1040, i.e. 1728 minus the panel), positioned
+   against IT so the spec's frame coordinates translate directly once the
+   panel's own width is subtracted (see PANEL_W in script.js). .final-stage
+   itself gets a uniform transform:scale() (applyStageScale()) for other
+   window sizes, so the whole composition scales together, panel excluded. */
+#finalPage { display: none; flex: 1; overflow: hidden; }
+#finalPage.is-current { display: flex; align-items: stretch; position: relative; overflow: auto; background: #FFFFFF;
+  --box-x: 247px; --box-y: 44px; --box-w: 616px; --box-h: 769.54px; --actions-x: 247px; --strip-x: 907px; --strip-y: 44px; --strip-visible-h: 655px; }
+.final-stage-viewport { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; min-width: 0; }
+/* No custom-property defaults declared here (only inherited from #finalPage
+   above) — a property SET on this element, even as a "just in case" default,
+   would permanently shadow applyEditorLayout()'s per-format values set on
+   #finalPage, since a direct declaration always wins over an inherited one
+   regardless of specificity. */
+.final-stage { position: relative; flex-shrink: 0; width: 1324px; height: 1040px; }
+/* Adjust-mode's own full-viewport takeover (§12) uses position:fixed on
+   descendants of .final-main; a transform on any ancestor would make THIS
+   scale transform their containing block instead of the true viewport, so
+   it's suppressed for the duration — adjust mode doesn't use the stage's own
+   scale/position once it goes fixed, so this has no visual effect there. */
+body.is-adjusting .final-stage { transform: none !important; }
+/* padding:0 and flex-direction:row override an earlier, otherwise-dead
+   .final-main rule (line ~60, a pre-redesign carousel/filmstrip layout that
+   nothing in the current HTML/JS references any more) whose padding:28px
+   28px 100px 24px and flex-direction:column were still silently winning the
+   cascade here since this rule never redeclared either property — shrinking
+   the real visible #preview canvas well below the measured box on every
+   format. Declaring them explicitly is the minimal fix; the dead rule itself
+   is a separate cleanup. */
+.final-main { position: absolute; top: var(--box-y); left: var(--box-x); width: var(--box-w); height: var(--box-h); display: flex; flex-direction: row; align-items: stretch; padding: 0; overflow: hidden; background: #FFFFFF; }
+.final-canvas-wrap { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; margin: 0; }
+.final-canvas-wrap .canvas-outer { position: relative; }
+canvas { border-radius: 4px; }
+.final-photo-actions { position: absolute; left: calc(100% + 14px); top: 0; display: flex; flex-direction: column; gap: 7px; width: 200px; }
+/* Not enough room beside the post — drop the controls underneath it instead of clipping */
+@media (max-width: 1180px){
+  .final-photo-actions { position: static; left: auto; top: auto; width: 100%; max-width: 320px; margin: 16px auto 0; }
+}
+
+/* ── Adjust-photo mode ── */
+.adjust-panel { display: none; }
+.is-adjusting .adjust-panel { display: flex; }
+.is-adjusting #adjustPhotoBtn { display: none; }
+.adjust-heading { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; }
+/* 330×132px, matching the panel's full 132px inner height; the heading and
+   slider both start 30px from the zoom section's own left edge — the
+   slider's 300px width already accounts for that inset (30+300=330), so a
+   left padding here positions both without a separate indent on either.
+   gap:35px, not 14 — the 40px thumb is vertically centered on the 10px
+   track (standard native-range behavior) and so overflows 15px above the
+   track's own layout box; a 35px heading-to-track gap is what actually
+   yields the required 20px of clear space to the thumb itself (35−15=20),
+   confirmed against the real rendered thumb position, not just the track. */
+.adjust-zoom-col { display: flex; flex-direction: column; justify-content: center; gap: 35px; width: 330px; height: 132px; box-sizing: border-box; padding-left: 30px; }
+/* Custom track + thumb: 300×10px light-gray track, 40px dark round thumb —
+   replacing the native range appearance. */
+#zoomSlider { -webkit-appearance: none; appearance: none; width: 300px; height: 10px; margin: 0; background: var(--ui-neutral-fill); border-radius: 1000px; cursor: pointer; }
+#zoomSlider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 40px; height: 40px; border-radius: 50%; background: #2E2A25; border: none; cursor: pointer; }
+#zoomSlider::-moz-range-track { width: 300px; height: 10px; background: var(--ui-neutral-fill); border-radius: 1000px; border: none; }
+#zoomSlider::-moz-range-thumb { width: 40px; height: 40px; border-radius: 50%; background: #2E2A25; border: none; cursor: pointer; }
+/* Save (Done) over Reset, 4px gap, 132px tall to match the zoom section —
+   NID_Generator_Hide_Preview_Scroll_Indicators.md §5: width is a FLOOR
+   (120px), not a fixed value, so a longer localized label (Polish's "Zacznij
+   od nowa") can grow it — min-width + nowrap + no explicit width lets a
+   width:auto column flex container size itself to its widest child's
+   content, and the default cross-axis stretch then makes BOTH buttons match
+   that same width automatically, with no JS measuring needed. */
+.adjust-actions { display: flex; flex-direction: column; justify-content: center; gap: 4px; height: 132px; }
+.adjust-actions .btn, .adjust-actions .action-btn { flex: none; min-width: 120px; padding: 0 28px; height: 64px; border-radius: 4px; font-size: 16px; line-height: 1; white-space: nowrap; display: flex; align-items: center; justify-content: center; }
+/* #adjustReset inherits .action-btn's white background + neutral border
+   (meant for the panel's other outlined buttons) — override to the flat gray
+   fill this specific Reset action needs. */
+#adjustReset.action-btn { background: var(--ui-neutral-fill); color: #2E2A25; border: none; }
+#adjustReset.action-btn:hover { background: var(--ui-neutral-hover); color: #2E2A25; }
+
+/* The photo is draggable in adjust mode — from inside the poster or from the
+   exposed photo around it */
+.is-adjusting .canvas-outer canvas,
+.is-adjusting .adjust-photo-layer { cursor: grab; touch-action: none; }
+.is-adjusting .canvas-outer canvas.is-dragging,
+.is-adjusting .adjust-photo-layer.is-dragging { cursor: grabbing; }
+
+/* Anchored to the post itself, so it never collides with the controls below */
+.canvas-frame { position: relative; display: block; }
+.canvas-frame canvas { position: relative; z-index: 1; }
+
+/* Full photograph shown behind the poster while adjusting, so its real edges are
+   visible. Its geometry is set in JS to line up exactly with the photo inside the
+   poster, making the poster read as a window over one continuous image. */
+.adjust-photo-layer { position: absolute; z-index: 0; top: 0; left: 0; display: none; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+.is-adjusting .adjust-photo-layer { opacity: 1; pointer-events: auto; }
+
+.drag-hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: rgba(26,26,26,0.82); color: #fff; font-size: 12px; padding: 8px 14px; border-radius: 20px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s ease; z-index: 3; }
+.drag-hint.show { opacity: 1; }
+
+/* ── Full-screen proofing stage (NID_GENERATOR_COMBINED_CORRECTIONS.md Part
+   V, 1728×1040 reference frame) — the whole app is covered by a #F7F8F8
+   scrim. The post and the toolbar are two INDEPENDENT fixed elements, not one
+   centered column: the post is always exactly 773px tall (voids an earlier
+   783px value) with its top pinned at y=44 and its width following the
+   format's own aspect ratio (var(--box-ratio), set per format on
+   #finalPage — see applyEditorLayout() in script.js), and the toolbar's own
+   top is pinned at y=862 — neither depends on the other's height, so zooming
+   the photo or a taller/shorter toolbar never moves the post. Previously both
+   lived in one flex column (gap:40px) inside a full-viewport .final-canvas-wrap,
+   so the post's rendered size came from whatever space centering left over
+   instead of a fixed 773px, and its position depended on the toolbar's total
+   height. */
+.adjust-scrim { position: fixed; inset: 0; background: #F7F8F8; z-index: 50; opacity: 0; pointer-events: none; transition: opacity .28s ease; }
+.is-adjusting .adjust-scrim { opacity: 1; pointer-events: auto; }
+
+/* The regular NID mark (reusing .final-brand's own icon — no duplicate asset)
+   pulled out of the left panel's normal flow into the Figma-measured fixed
+   44/44 position, so it reads above the scrim instead of being hidden behind
+   it along with the rest of the (still-present-but-covered) panel. Replaces
+   the old top-right red "Atoms/Logo Badge" (.adjust-badge), which isn't part
+   of this design. */
+body.is-adjusting #finalPage .panel .final-brand { position: fixed; top: 44px; left: 44px; margin: 0; z-index: 64; }
+/* The language switch must also stay above the scrim/post while adjusting —
+   its base z-index (5) previously left it hidden behind the z-index:50 scrim. */
+body.is-adjusting .topbar { z-index: 64; }
+
+/* .final-canvas-wrap becomes exactly the post's own box — setupCanvas() reads
+   THIS element's clientWidth/clientHeight to size the canvas (same function
+   used for the small non-adjusting preview), so sizing the box itself to
+   773×(aspect) is what makes the rendered post exactly 773px tall, with no
+   extra math in JS. */
+/* Centered via left:50% + a calc() margin-left, NOT transform:translateX() —
+   a transform on this element would make it the containing block for every
+   fixed-position descendant (including the toolbar below, which needs its
+   own fixed position resolved against the true viewport, not this box). */
+.is-adjusting .final-canvas-wrap {
+  position: fixed; top: 44px; left: 50%; margin-left: calc(var(--box-ratio) * -386.5px);
+  height: 773px; aspect-ratio: var(--box-ratio); width: auto;
+  margin-top: 0; margin-bottom: 0; padding: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center; overflow: visible;
+}
+.is-adjusting .canvas-outer { position: static; width: 100%; height: 100%; display: block; }
+.is-adjusting .canvas-frame { width: 100%; height: 100%; }
+/* The poster frame is semi-transparent (85%) so the continuous photo shows through
+   it; the circles read as full because the same photo sits behind them at 100%. */
+.is-adjusting .canvas-frame canvas { opacity: 0.85; transition: opacity .28s ease; }
+
+/* Toolbar: its own fixed element, independent of the post/canvas-wrap above.
+   Anchored to the VIEWPORT'S OWN bottom edge (not a hardcoded top coordinate)
+   so the 30px gap below it holds at any viewport height — in the 1040px-tall
+   reference frame this naturally lands its top at 862px (148px panel + 30px
+   gap = 178px, 1040-178=862), but it's a consequence of the anchoring, not a
+   separately hardcoded number. */
+.is-adjusting .final-photo-actions { position: fixed; left: 50%; bottom: 30px; top: auto; transform: translateX(-50%); width: auto; margin: 0; z-index: 61; }
+/* Panel sizing is Figma's own measured structure, not a manual compensation:
+   8px outer inset + 330px Zoom section + 32px gap + the button group (see
+   .adjust-actions above) + 8px outer inset. No explicit width — a width:auto
+   flex row sizes itself to exactly that sum on its own, so it grows with the
+   button group automatically (Polish's wider Reset label) while staying
+   498px in English. padding:6.5px, not 8 — box-sizing:border-box puts the
+   1.5px border OUTSIDE the padding box, so 1.5(border) + 6.5(padding) is what
+   actually lands content at the Figma-measured 8px from the panel's true
+   outer edge on every side (confirmed against both the 495px horizontal and
+   145px vertical inner space the panel's own 498×148 leaves after its border). */
+.is-adjusting .adjust-panel { align-items: center; gap: 32px; background: #fff; border: 1.5px solid var(--ui-neutral-border); border-radius: 8px; box-shadow: none; padding: 6.5px; height: 148px; }
+
+/* "Variants" = saved drafts (Save draft fills a slot here) — heading + a
+   4-column grid, own 360px column, bottom-anchored (see .panel-variants
+   margin-top:auto below) so it always ends at the same y regardless of format.
+   Tile height (--draft-tile-h) derives from the active canvas ratio at a fixed
+   84px width — UI_SPEC.md §13 gives e.g. 84×105 portrait down to 84×44 for FB
+   Event's wide canvas. Real drafts render first; renderDrafts() pads the rest
+   with inert placeholder cells up to MAX_DRAFTS (8 = exactly 2 rows). */
+.panel-variants { display: flex; flex-direction: column; gap: 20px; width: 360px; }
+.variants-heading { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 32px; color: #2F2A24; }
+.variants-grid { display: grid; grid-template-columns: repeat(4, 84px); gap: 8px; }
+.draft-tile { position: relative; width: 84px; height: var(--draft-tile-h, 105px); border: none; border-radius: 4px; overflow: visible; cursor: pointer; background: transparent; transition: transform .12s; }
+.draft-tile:hover { transform: translateY(-2px); }
+.draft-tile.selected { outline: 1.5px solid #E03211; outline-offset: 2px; border-radius: 4px; }
+.draft-tile img { width: 100%; height: 100%; display: block; border-radius: 4px; object-fit: cover; background: var(--ui-quiet-surface); }
+.draft-placeholder { width: 84px; height: var(--draft-tile-h, 105px); border-radius: 4px; background: var(--ui-quiet-surface); }
+/* Delete-this-draft control — only appears on hover so it doesn't compete with
+   the thumbnail itself at rest. */
+.thumb-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: #fff; color: #1A1A1A; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.22); opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+.draft-tile:hover .thumb-remove { opacity: 1; }
+.thumb-remove:hover { background: #E03211; color: #fff; }
+
+/* Generated design suggestions — a vertical strip beside the preview, one
+   column, real app-rendered canvases. Position (--strip-x/--strip-y) is
+   format-dependent (applyEditorLayout()). The window shows 4 full cards +
+   half a 5th (hard-clipped, not faded — see updateVariantsColVisibility()
+   for the per-count height logic). 82px cards sit inset 8px on each side
+   within a 98px column so the pocket edges below can extend 8px past them on
+   both sides. Distinct from the drafts grid above: no captions, no delete,
+   and a border swap (not outline+scale) for selection so picking one never
+   nudges its neighbors. */
+.variants-strip-col { position: absolute; top: var(--strip-y); left: var(--strip-x); width: 98px; box-sizing: border-box; padding: 0 8px; height: var(--strip-visible-h); display: flex; flex-direction: column; }
+.variants-strip { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.variants-strip::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.gen-thumb { flex-shrink: 0; width: 82px; height: var(--strip-tile-h, 102.5px); border-radius: 4px; overflow: hidden; cursor: pointer; border: 1.5px solid transparent; background: var(--ui-quiet-surface); transition: border-color .12s; }
+.gen-thumb.selected { border-color: var(--ui-neutral-border); }
+.gen-thumb canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
+/* Stationary pocket edges — pseudo-elements of #variantsCol itself (the fixed
+   98px shell), never of the scrolling .variants-strip, so they never travel
+   with the thumbnails (NID_Generator_Mini_Preview_Pocket_Scroll_States.md).
+   Each spans the full 98px shell (including the 8px side insets, since an
+   absolutely positioned pseudo-element's containing block is the nearest
+   positioned ancestor's PADDING box) at a fixed 2px height, top and bottom.
+   pointer-events:none plus a positive z-index keeps them clickable-through
+   and above the strip's own static-position content. Visibility is driven
+   independently per edge by .show-top-edge/.show-bottom-edge (real scroll
+   geometry — see updateVariantsColVisibility() and the #filmstrip scroll
+   handler), not by a single has-overflow flag: the bottom edge alone at the
+   very top of a long list, both together in the middle, top edge alone at
+   the very end, neither when everything already fits. */
+.variants-strip-col::before,
+.variants-strip-col::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 2px;
+  background: #ADB6BB; pointer-events: none; z-index: 2; opacity: 0;
+  transition: opacity .15s ease;
+}
+.variants-strip-col::before { top: 0; }
+.variants-strip-col::after { bottom: 0; }
+.variants-strip-col.show-top-edge::before { opacity: 1; }
+.variants-strip-col.show-bottom-edge::after { opacity: 1; }
+
+/* ── Left editing panel ── box-sizing so the 44px inset lives inside the
+   404px box (44 inset + 360 content) — the 296px gap to the preview column
+   is the sibling .final-gutter, not padding here. */
+#finalPage .panel { box-sizing: border-box; width: 404px; min-width: 404px; flex: 0 0 404px; border: none; padding: 44px 0 44px 44px; gap: 0; justify-content: flex-start; overflow-y: auto; }
+/* Logo: 44×44 at x=44,y=44 (new Figma frame). height:44 + width:auto rather than
+   the measured 43.886 so the 1:1 source SVG never gets a non-uniform squeeze. */
+.final-brand { flex: 0 0 auto; margin-bottom: 44px; }
+.final-brand .brand-icon { width: auto; height: 44px; display: block; }
+.panel-block { display: flex; flex-direction: column; }
+.panel-heading--icon { display: flex; align-items: center; gap: 7px; }
+.diamond-icon { flex: 0 0 auto; color: #8A8A8A; }
+.panel-actions { display: flex; gap: 8px; }
+.panel-actions .btn { flex: 1; }
+
+/* Button (UI_SPEC.md §4 "Button"): measured on Edit text / Adjust photo — height
+   71px, padding 24/28, radius 4px, neutral fill (--ui-neutral-fill), Nocturne Sans 500/16.
+   Scoped to the panel controls and the save/download row specifically (not the
+   whole #finalPage) so the small Adjust-photo overlay buttons keep their own
+   compact sizing instead of inheriting this. */
+#finalPage .panel-controls .btn,
+#finalPage .final-cta .btn {
+  height: 71px; padding: 24px 28px; border-radius: 4px; gap: 10px;
+  font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; line-height: 16px;
+}
+/* .btn's base rule sets flex:1 (flex-basis:0%) for its usual row context — as a
+   direct child of the column-flex .panel-controls that fights the fixed height
+   above, since flex-basis governs main-axis (here vertical) size. Neutralize it
+   only for that direct-child case; .panel-actions/.final-cta are row contexts,
+   width-basis, unaffected. */
+#finalPage .panel-controls > .btn { flex: none; }
+#finalPage .panel-controls .btn-soft,
+#finalPage .final-cta .btn-soft { background: var(--ui-neutral-fill); color: #2F2A24; }
+#finalPage .panel-controls .btn-soft:hover,
+#finalPage .final-cta .btn-soft:hover { background: var(--ui-neutral-hover); }
+#finalPage .final-cta .btn-gen { background: #E03211; }
+#finalPage .final-cta .btn-gen:hover { background: #C02A0E; }
+
+/* Diamonds segmented control — two mutually-exclusive options sharing one
+   360×71px pill track (NID_Generator_Corrections.md). A single black
+   "thumb" (172×55px, 8px inset top/bottom, 8px from whichever side is
+   active) slides between the two positions on a CSS transform transition,
+   underneath the two buttons — which stay transparent themselves and just
+   swap text/icon color — instead of each button's own background flipping
+   instantly between the two states. */
+.diamond-toggle { position: relative; width: 360px; height: 71px; box-sizing: border-box; padding: 8px; display: flex; align-items: center; border-radius: 1000px; background: var(--ui-neutral-fill); }
+.diamond-toggle-thumb { position: absolute; top: 8px; left: 8px; width: 172px; height: 55px; border-radius: 1000px; background: #2E2A25; transform: translateX(0); transition: transform .22s ease-out; }
+/* 360 − 8(left inset) − 172(segment) − 8(right inset) = 172px of travel */
+.diamond-toggle.is-on .diamond-toggle-thumb { transform: translateX(172px); }
+@media (prefers-reduced-motion: reduce) { .diamond-toggle-thumb { transition: none; } }
+.diamond-opt { position: relative; z-index: 1; flex: 1; height: 55px; border: none; background: transparent; border-radius: 1000px; padding: 0 18px; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; color: #2E2A25; cursor: pointer; transition: color .12s; white-space: nowrap; }
+.diamond-opt.active { color: #fff; }
+.diamond-toggle-icon { color: currentColor; }
+
+/* soft neutral button (Edit text / Replace photo / Save draft) — outside #finalPage */
+.btn-soft { background: #F2F2F0; color: #1A1A1A; border: none; }
+.btn-soft:hover { background: #E9E9E6; }
+
+/* ── Final screen: logo → controls → variants → drafts, one 360px column ── */
+#finalPage .panel { justify-content: flex-start; gap: 0; }
+/* flex-shrink:0 throughout: .panel is a column flex container exactly as tall as
+   the viewport, and content can genuinely exceed that (more variants, a longer
+   drafts list) — .panel's own overflow-y:auto should absorb that as a scrollbar,
+   never as flexbox silently squashing button/swatch heights below their spec'd size. */
+.panel-controls { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.panel-controls > * { flex-shrink: 0; }
+.panel-controls .palette-mini { margin-top: 2px; }
+/* Part VII — background/blob color palettes as 8 overlapping circles, not
+   stretched capsules: fixed 53.85px diameter, ~10.1px overlap (step ~43.74px)
+   filling the same 360px row. No permanent selection outline (the chosen
+   color only shows live on the post); a click gets a brief spring-back
+   squish instead (renderColorPalette() in script.js). */
+#bgColorSection .palette, #blobColorSection .palette { width: 360px; gap: 0; flex-wrap: nowrap; align-items: flex-start; }
+.palette-circle { flex-shrink: 0; width: 53.85px; height: 53.85px; border-radius: 50%; border: none; padding: 0; cursor: pointer; }
+.palette-circle:not(:first-child) { margin-left: -10.11px; }
+.palette-circle:hover { position: relative; z-index: 1; }
+.palette-circle:focus-visible { position: relative; z-index: 1; outline: 1.5px solid #2E2A25; outline-offset: 2px; }
+@keyframes paletteSquish { 0% { transform: scale(1); } 40% { transform: scale(0.82); } 100% { transform: scale(1); } }
+.palette-circle.is-pressed { animation: paletteSquish .32s cubic-bezier(.34,1.56,.64,1); }
+/* The large gap above Variants is part of the composition (UI_SPEC.md §3) —
+   calibrated to land the heading near y=736 at the 1728×1040 reference; it
+   isn't meant to collapse into the controls' own 8px rhythm. */
+/* Bottom-anchored (not a fixed offset): UI_SPEC.md §13 shows this group ending
+   at the same y in all six formats regardless of tile height, so it's pushed
+   to the bottom of the column instead of positioned from the top. */
+.panel-variants { margin-top: auto; flex-shrink: 0; }
+
+/* Save/Download row (UI_SPEC.md §13): always y=864, 616px wide, 8px gap,
+   equal-width buttons — a fixed position independent of the preview box's own
+   height (landscape formats leave a lot of empty box below their artwork).
+   Height/padding/radius/fill come from the #finalPage .final-cta .btn rule above. */
+.final-cta { position: absolute; top: 864px; left: var(--actions-x); width: 616px; display: flex; gap: 8px; }
+.final-cta .btn { flex: 1 0 0; }
+
+/* Not part of the reference frame's fixed budget — kept reachable just below
+   the action row rather than squeezing it to fit an exact spec height. */
+.reuse-row { position: absolute; top: 979px; left: var(--actions-x); width: 616px; display: flex; justify-content: center; }
+.reuse-toggle { background: none; border: none; padding: 4px; font-family: inherit; font-size: 16px; color: #E03211; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; transition: color .12s; }
+.reuse-toggle:hover { color: #C02A0E; }
+
+/* No arrows on the final-screen buttons */
+#finalPage .btn-gen::after { content: none; }
+
+.save-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px; }
+.save-col { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.save-row .btn { width: 100%; padding: 13px 10px; }
+
+/* ── Edit-text modal (UI_SPEC.md §11) — 640px-wide reference frames. 8px outer
+   padding frames the whole card (also where the 32×32px close control sits,
+   inset 8px from the card edge); an inner 30px horizontal padding holds the
+   actual content. Flat Heading → optional Subheading → pills → conditional
+   fields, no "Required"/"Optional" section headers (Figma doesn't show them,
+   and both Heading/Subheading now carry their own field-req-tag instead). */
+.modal-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; padding: 8px; }
+.modal { position: relative; width: 640px; max-width: 100%; max-height: calc(100vh - 16px); background: #fff; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.modal-body { flex: 1 1 auto; overflow-y: auto; padding: 0 30px; }
+.modal-head { padding: 22px 30px 20px; flex-shrink: 0; }
+
+.modal-section { padding: 0 0 28px; }
+
+.field-block + .field-block { margin-top: 22px; }
+/* The date controls read as their own group below the pills */
+.field-block--date { margin-top: 24px; }
+.modal-title { font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 32px; font-weight: 500; line-height: 1; color: #2E2A25; }
+.modal-close { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: none; font-size: 20px; line-height: 1; color: var(--ui-muted-text); cursor: pointer; padding: 0; border-radius: 4px; }
+.modal-close:hover { color: #1A1A1A; background: var(--ui-neutral-hover); }
+.modal .field-label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 16px; font-weight: 500; color: #2E2A25; text-transform: none; letter-spacing: normal; }
+.modal textarea, .modal input[type=text] { background: #fff; border: 1.5px solid var(--ui-neutral-border); border-radius: 4px; font-size: 16px; padding: 15px; }
+.modal textarea { min-height: 120px; }
+.modal textarea::placeholder, .modal input[type=text]::placeholder { color: var(--ui-muted-text); }
+.modal textarea:focus, .modal input[type=text]:focus { border-color: #E03211; }
+.modal .date-group { margin-top: 20px; }
+/* Part IV — the button sits exactly 8px from the modal's OUTER edges
+   (width = modal width − 16px), which .modal's own padding:8px already
+   provides on every side; a horizontal/bottom padding here would double it
+   (was 30/30, an extra 30px on top of the 8 already on the modal itself).
+   Only a top gap belongs here, for breathing room below the fields above. */
+.modal-actions { padding: 20px 0 0; flex-shrink: 0; }
+.modal-actions .btn { width: 100%; height: 71px; border-radius: 4px; font-size: 16px; }
+
+/* ── "Where else do we publish?" reuse modal (NID_Generator_Corrections.md) ──
+   670×658px fixed outer size regardless of how many destinations the active
+   platform actually has — no action-row footer, the pill row is the whole
+   body. Title at X=38/Y=30; the 64px gap to the first bubble row (landing it
+   at Y=116) comes entirely from modal-body's own top padding, not a generic
+   header padding value. Bubbles keep their natural content-driven width and
+   wrap left-aligned via plain flex-wrap (no forced per-row count/centering —
+   the Figma reference's specific row breaks are a function of its own
+   platform-label text, not a layout rule to hardcode); a shorter real
+   destination list just leaves empty space below inside the fixed modal
+   instead of centering or stretching to fill it. */
+.reuse-modal { width: 670px; height: 658px; }
+/* 22/30 here + the shared .modal's own 8px outer padding = the spec's
+   30px-from-top/38px-from-left, measured from the modal's true outer edge. */
+.reuse-modal .modal-head { padding: 22px 30px 0; }
+.reuse-modal .modal-title { line-height: 1; }
+/* Scrolls rather than clips: with long Polish labels (or a short window,
+   where .modal's max-height wins over the fixed 658px) the pill rows can be
+   taller than the body, and overflow:hidden left the last destinations
+   unreachable. min-height:0 lets the flex child actually shrink and scroll;
+   overscroll-behavior stops a wheel at either end from chaining out to the page. */
+.reuse-modal .modal-body { padding: 54px 30px 8px; overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-neutral-border) transparent; }
+/* 8px both directions (Part-Editor-Modal-Corrections §6 — was 4px). Four
+   123px rows + three 8px gaps = 516px, 12px taller than the old 4px-gap
+   arrangement; at the fixed title/body position that shrinks the bottom
+   clearance by the same 12px rather than changing the modal's height or the
+   64px title-to-bubbles gap to compensate — the 8px gap is what's specified,
+   not a fixed remaining-space target. */
+.reuse-pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.reuse-modal-pill { display: inline-flex; align-items: center; justify-content: center; height: 123px; padding: 0 48px; border-radius: 1000px; border: none; background: var(--ui-neutral-fill); color: #2E2A25; font-family: 'NocturneSans', -apple-system, sans-serif; font-size: 16px; font-weight: 500; letter-spacing: normal; text-align: center; cursor: pointer; transition: background .15s ease; }
+.reuse-modal-pill:focus-visible { outline: 1.5px solid #2E2A25; outline-offset: 2px; }
+
+/* ── "Download post" variant-selection modal (NID_Generator_Corrections.md) ──
+   Fixed 924×760px outer size for every variant count (2–8; 1 downloads
+   directly, see openDownloadModal()) — never content-driven. Deliberate
+   row groupings per count (renderDownloadCards()'s DL_ROW_SPLITS), not
+   generic flex-wrap: each row is its own centered flex line, stacked in a
+   column that's itself centered (both axes) within the fixed body, so a
+   short last row centers under a full row above it instead of just
+   flowing wherever wrapping happens to break. The 2-card state swaps in
+   larger 324px cards with their own 8px gap instead of the standard
+   200×16px grid. The action button spans the full inner width flush
+   against the shared 8px card padding, no extra 30px inset. */
+.download-modal { width: 924px; height: 760px; }
+.download-modal .modal-body { display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.download-modal .modal-actions { padding: 8px 0 0; }
+.dl-grid { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.dl-row { display: flex; gap: 16px; justify-content: center; }
+.dl-row--large { gap: 8px; }
+.dl-card { position: relative; padding: 0; border: none; border-radius: 4px; overflow: hidden; cursor: pointer; background: var(--ui-quiet-surface); flex-shrink: 0; }
+.dl-card img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 1; transition: opacity .12s ease; }
+.dl-card.selected img { opacity: 0.7; }
+.dl-card:focus-visible { outline: 1.5px solid #E03211; outline-offset: 2px; }
+.dl-check { display: none; position: absolute; right: 8px; bottom: 8px; width: 24px; height: 24px; border-radius: 50%; background: #2E2A25; align-items: center; justify-content: center; }
+.dl-card.selected .dl-check { display: flex; }
+
